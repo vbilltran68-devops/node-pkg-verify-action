@@ -1,0 +1,87 @@
+name: 'Node Package Verify Action'
+description: 'GitHub Action to verify Node.js package with npm/yarn/pnpm package manager by running lint and unit tests'
+author: 'vbilltran68'
+inputs:
+  package-manager:
+    description: 'Package manager to use (npm, yarn, or pnpm)'
+    default: 'npm'
+  node-version:
+    description: 'Node.js version to use (must be >= 18.0.0)'
+    default: 'lts/*'
+runs:
+  using: 'composite'
+  steps:
+    - name: Verify Package Manager
+      run: |
+        if [[ "${{ inputs.package-manager }}" != "npm" && "${{ inputs.package-manager }}" != "yarn" && "${{ inputs.package-manager }}" != "pnpm" ]]; then
+          echo "Error: Invalid package manager. Please use npm, yarn, or pnpm."
+          exit 1
+        fi
+      shell: bash
+
+    - name: Verify Node.js version
+      run: |
+        # Extract major version number
+        node_version=${{ inputs.node-version }}
+        major_version=$(echo $node_version | cut -d'.' -f1)
+
+        # Check if it's "lts/*" or numeric version
+        if [ "$node_version" != "lts/*" ] && [ $major_version -lt 18 ]; then
+          echo "Error: Node.js version must be >= 18.0.0"
+          exit 1
+        fi
+      shell: bash
+
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.trigger-ref }}
+
+    - name: Setup pnpm
+      if: inputs.package-manager == 'pnpm'
+      uses: pnpm/action-setup@v2
+      with:
+          version: 8
+
+    - name: Setup Yarn
+      if: inputs.package-manager == 'yarn'
+      run: |
+        # Corepack is a tool included with Node.js that helps manage package manager versions
+        # It ensures consistent package manager versions across the project
+        # We enable it and prepare yarn to use the stable version
+        corepack enable
+        corepack prepare yarn@stable --activate
+      shell: bash
+
+    - name: Setup node
+      uses: actions/setup-node@v3
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.package-manager }}
+
+    - name: Install dependencies
+      run: ${{ inputs.package-manager }} install
+      shell: bash
+
+    - name: Run Lint
+      run: |
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run lint
+        else
+          ${{ inputs.package-manager }} lint
+        fi
+      shell: bash
+
+    - name: Run test
+      run: |
+        if [ "${{ inputs.package-manager }}" = "npm" ]; then
+          npm run test
+        else
+          ${{ inputs.package-manager }} test
+        fi
+      shell: bash
+
+branding:
+  color: 'orange'
+  icon: 'check-circle'
